@@ -1,0 +1,86 @@
+---
+title: "Project 3"
+author: "Josef Waples"
+date: "10/6/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# This is work towards sentiment analysis for freeform responses 
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(readr) # read_csv
+library(dplyr) # %>%
+library(purrr) # set_names
+library(tidytext) # unnest_tokens
+library(tidyr) # spread
+library(ggplot2) # ggplot
+
+freeform_response <- read_csv('~/Desktop/freeFormResponses.csv')
+survey_schema <- read_csv('~/Desktop/SurveySchema.csv')
+multiple_choice_response <- read_csv('~/Desktop/multipleChoiceResponses.csv')
+
+
+
+# remove first row double header 
+freeform_response <- freeform_response %>%
+  set_names(freeform_response[1, ]) %>%
+  slice(-1)
+
+tidytext_freeform_response <- freeform_response %>%
+  unnest_tokens(word, `Select any activities that make up an important part of your role at work: (Select all that apply) - Other - Text`) %>%
+  select(word)
+
+# remove stop words using an anti-join from the tidy_text stop_words library
+tidytext_stop_words_removed_map_data <- tidytext_freeform_response %>%
+  anti_join(stop_words)
+
+# count up the words
+tidytext_counted_word <- tidytext_stop_words_removed_map_data %>%
+  group_by() %>%
+  count(word, sort = TRUE)
+
+# remove the total column at the top
+tidytext_counted_word = tidytext_counted_word[-1,]
+nrow(tidytext_counted_word)
+
+# sentiment analysis
+sentiments <- tidytext_counted_word %>%
+  inner_join(get_sentiments("bing")) %>%
+  spread(sentiment, n, fill = 0) %>%
+  mutate(sentiment = positive - negative)
+
+tidytext_merged <- merge(tidytext_counted_word, sentiments, by = "word") %>%
+  mutate(sentiment_value = n * sentiment)
+
+
+# create a sentiments summary -- what would we group by? There isn't really identifies in the survey?
+sentiments_summary <- sentiments %>%
+  group_by() %>%
+  summarize(sentiment_average = sum(sentiment))
+
+tidytext_counted_word_top_ten <- tidytext_counted_word %>%
+  slice(1:10)
+
+ggplot(tidytext_counted_word_top_ten, aes(word, n)) + 
+  geom_point()
+
+tidytext_merged_most_extreme <- tidytext_merged %>%
+  filter(sentiment_value > 3 | sentiment_value < -3)
+
+
+# I would love to color this by education level or something like this -- but I don't know if we can match these responses back to the responses from the multiple choice answers 
+
+ggplot(tidytext_merged_most_extreme, aes(word, sentiment_value)) + 
+  geom_point(size = 4) +
+  labs(subtitle="Question: What Are Important Activites for Data Scientists", title = "Freeform Answer - Sentiment Analysis") +
+  theme(plot.title = element_text(hjust = 0.5), plot.subtitle = element_text(hjust = 0.5)) +
+  labs(caption = "2018 Data Science Survey")
+
+
+
+```
